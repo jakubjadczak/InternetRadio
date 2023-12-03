@@ -3,6 +3,9 @@ from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QAudioOutput, QAudioFormat
 from PyQt5.QtNetwork import QTcpSocket, QHostAddress
 from PyQt5.QtCore import QUrl, QByteArray, pyqtSlot, QBuffer, QIODevice
+import pygame
+from io import BytesIO
+
 
 class MusicPlayer(QWidget):
     def __init__(self):
@@ -40,20 +43,24 @@ class MusicPlayer(QWidget):
         self.buffer = QByteArray()
 
     def init_socket(self):
+        #wywolywane w init()
         self.tcp_socket = QTcpSocket(self)
         self.tcp_socket.connected.connect(self.on_connected)
         self.tcp_socket.readyRead.connect(self.on_ready_read)
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
         server_address = QHostAddress('127.0.0.1')  # Replace with the server's IP address
-        server_port = 8080  # Replace with the server's port
+        server_port = 8081  # Replace with the server's port
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
     def toggle_play_streamed_music(self):
+        print('toggle play')
         if not self.streaming:
             self.tcp_socket.write(b"request_stream")
             print("Wysłano żądanie strumieniowania do serwera")
+            self.play_buffered_music()
+
         else:
             self.tcp_socket.disconnectFromHost()
 
@@ -66,8 +73,13 @@ class MusicPlayer(QWidget):
         print("Połączono z serwerem")
 
     def on_ready_read(self):
+        print('in on ready read')
         try:
             self.buffer += self.tcp_socket.readAll()
+            print(self.buffer)
+            print(len(self.buffer))
+            if len(self.buffer) > 1024:
+                self.play_buffered_music()
             if not self.streaming:
                 print("Rozpoczęto odtwarzanie strumienia")
                 self.streaming = True
@@ -84,18 +96,20 @@ class MusicPlayer(QWidget):
         print(f"Błąd gniazda: {socket_error}")
 
     def play_buffered_music(self):
-        if len(self.buffer) >= 1024:
-            buffer = QBuffer()
-            buffer.setData(self.buffer)
-            buffer.open(QIODevice.ReadOnly)
+        print('In buffered music', len(self.buffer))
+        
+        # if len(self.buffer) >= 1024:
+        buffer = QBuffer()
+        buffer.setData(self.buffer)
+        buffer.open(QIODevice.ReadOnly)
 
-            media_content = QMediaContent()
-            media_content.setIODevice(buffer)
 
-            self.media_player.setMedia(media_content)
-            print("Starting audio output")
-            self.audio_output.start(buffer)
-            self.buffer.clear()
+        pygame.init()
+        pygame.mixer.init()
+        
+        sound = pygame.mixer.Sound(BytesIO(self.buffer))
+        
+        sound.play()
 
     def set_volume(self):
         volume = self.volume_slider.value()
