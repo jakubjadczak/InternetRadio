@@ -1,11 +1,11 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider, QMessageBox
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent, QAudioOutput, QAudioFormat
-from PyQt5.QtNetwork import QTcpSocket, QHostAddress
-from PyQt5.QtCore import QUrl, QByteArray, pyqtSlot, QBuffer, QIODevice
-import pygame
-from io import BytesIO
-
+from PyQt5.QtCore import Qt, QByteArray
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider
+from PyQt5.QtMultimedia import QMediaPlayer
+from PyQt5.QtNetwork import QTcpSocket
+from pydub import AudioSegment
+from pydub.playback import play
+from io import BytesIO, StringIO
 
 class MusicPlayer(QWidget):
     def __init__(self):
@@ -17,17 +17,13 @@ class MusicPlayer(QWidget):
     def init_ui(self):
         self.setWindowTitle('Music Streaming Client')
 
-        self.media_player = QMediaPlayer()
-        self.audio_output = QAudioOutput()
-
         self.play_button = QPushButton('Play')
         self.play_button.clicked.connect(self.toggle_play_streamed_music)
 
         self.test_button = QPushButton('Test')
         self.test_button.clicked.connect(self.send_test_request)
 
-        self.volume_slider = QSlider()
-        self.volume_slider.setOrientation(1)  # Vertical orientation
+        self.volume_slider = QSlider(Qt.Vertical)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(50)
         self.volume_slider.valueChanged.connect(self.set_volume)
@@ -43,13 +39,12 @@ class MusicPlayer(QWidget):
         self.buffer = QByteArray()
 
     def init_socket(self):
-        #wywolywane w init()
         self.tcp_socket = QTcpSocket(self)
         self.tcp_socket.connected.connect(self.on_connected)
         self.tcp_socket.readyRead.connect(self.on_ready_read)
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
-        server_address = QHostAddress('127.0.0.1')  # Replace with the server's IP address
+        server_address = "127.0.0.1"  # Replace with the server's IP address
         server_port = 8081  # Replace with the server's port
 
         self.tcp_socket.connectToHost(server_address, server_port)
@@ -59,7 +54,6 @@ class MusicPlayer(QWidget):
         if not self.streaming:
             self.tcp_socket.write(b"request_stream")
             print("Wysłano żądanie strumieniowania do serwera")
-            self.play_buffered_music()
 
         else:
             self.tcp_socket.disconnectFromHost()
@@ -68,56 +62,47 @@ class MusicPlayer(QWidget):
         self.tcp_socket.write(b"test")
         print("Wysłano żądanie test do serwera")
 
-    @pyqtSlot()
     def on_connected(self):
         print("Połączono z serwerem")
 
     def on_ready_read(self):
-        print('in on ready read')
         try:
             self.buffer += self.tcp_socket.readAll()
-            print(self.buffer)
-            print(len(self.buffer))
-            if len(self.buffer) > 1024:
-                self.play_buffered_music()
-            if not self.streaming:
+            print(f"Received new batch of data. Current buffer size: {len(self.buffer)} bytes")
+            if len(self.buffer) > 1024 * 10 and not self.streaming:  # Adjust the multiplier based on your needs
                 print("Rozpoczęto odtwarzanie strumienia")
                 self.streaming = True
+                self.start_continuous_playback()
+
         except Exception as e:
             print(f"Błąd przy odbieraniu danych: {e}")
-
-        # Sprawdź, czy otrzymano odpowiedź na żądanie "test"
-        if b"test ok" in self.buffer:
-            response_text = str(self.buffer, 'utf-8')  # Konwersja QByteArray na string
-            QMessageBox.information(self, 'Odpowiedź na żądanie "test"', response_text)
-            self.buffer.clear()
 
     def on_error(self, socket_error):
         print(f"Błąd gniazda: {socket_error}")
 
-    def play_buffered_music(self):
-        print('In buffered music', len(self.buffer))
-        
-        # if len(self.buffer) >= 1024:
-        buffer = QBuffer()
-        buffer.setData(self.buffer)
-        buffer.open(QIODevice.ReadOnly)
+    def start_continuous_playback(self):
+        try:
+            buffer_data = self.buffer.data()
 
+            # Convert the buffer data to an AudioSegment
+            audio_segment = AudioSegment.from_mp3(BytesIO(buffer_data))
 
-        pygame.init()
-        pygame.mixer.init()
-        
-        sound = pygame.mixer.Sound(BytesIO(self.buffer))
-        
-        sound.play()
+            # Play the audio segment
+            play(audio_segment)
+
+            self.buffer.clear()
+
+        except Exception as e:
+            print(f"Error during continuous playback: {e}")
 
     def set_volume(self):
+        # Adjust the volume using a system-level volume control
         volume = self.volume_slider.value()
-        self.media_player.setVolume(volume)
-        self.audio_output.setVolume(volume)
+        # You may need to implement a system-level volume adjustment here
+        print(f"Setting volume to {volume}")
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
+    app = QApplication([])
     player = MusicPlayer()
     player.show()
     sys.exit(app.exec_())
