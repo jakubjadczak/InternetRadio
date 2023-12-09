@@ -7,12 +7,14 @@
 #include <dirent.h>
 #include <fstream>
 #include <queue>
-#include <algorithm> 
+#include <algorithm>
+#include <thread>
+#include <chrono>
 
 
 #define PORT 8081
 #define MAX_CLIENTS 10
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 10240
 #define SONGS_DIR "songs"
 
 int serverSocket;
@@ -82,11 +84,23 @@ void handleClientData(pollfd& fd, std::vector<pollfd>& fds) {
     }
 }
 
-void broadcastAllSongsForClient(int clientSocket) {
-    std::cout<< "in broadcast all \n ";
+void sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
+    size_t totalBytesSent = 0;
 
-    DIR *dir;
-    struct dirent *ent;
+    while (totalBytesSent < chunkSize) {
+        ssize_t sent = send(clientSocket, chunk + totalBytesSent, chunkSize - totalBytesSent, 0);
+
+        if (sent == -1) {
+            std::cerr << "Błąd przy wysyłaniu danych do klienta" << std::endl;
+            break;
+        }
+        totalBytesSent += sent;
+    }
+}
+
+void broadcastChunksForClient(int clientSocket) {
+    DIR* dir;
+    struct dirent* ent;
     if ((dir = opendir(SONGS_DIR)) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             if (ent->d_type == DT_REG) {
@@ -103,18 +117,10 @@ void broadcastAllSongsForClient(int clientSocket) {
                 while (!file.eof()) {
                     file.read(buffer, sizeof(buffer));
                     size_t bytesRead = file.gcount();
-                    size_t totalBytesSent = 0;
 
-                    while (totalBytesSent < bytesRead) {
-                        std::cout<<"wysylam \n";
-                        ssize_t sent = send(clientSocket, buffer + totalBytesSent, bytesRead - totalBytesSent, 0);
+                    sendChunkToClient(clientSocket, buffer, bytesRead);
 
-                        if (sent == -1) {
-                            std::cerr << "Błąd przy wysyłaniu danych do klienta" << std::endl;
-                            break;
-                        }
-                        totalBytesSent += sent;
-                    }
+                    std::this_thread::sleep_for(std::chrono::seconds(9));
                 }
                 file.close();
             }
@@ -129,9 +135,10 @@ void handleStreamingRequests(std::vector<pollfd>& fds) {
     while (!clientsWaitingForStream.empty()) {
         int clientSocket = clientsWaitingForStream.front();
         clientsWaitingForStream.pop();
-        broadcastAllSongsForClient(clientSocket);
+        broadcastChunksForClient(clientSocket);
     }
 }
+
 
 int main() {
     std::vector<pollfd> fds;
