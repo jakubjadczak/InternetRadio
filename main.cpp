@@ -120,7 +120,7 @@ void broadcastChunksForClient(int clientSocket) {
 
                     sendChunkToClient(clientSocket, buffer, bytesRead);
 
-                    std::this_thread::sleep_for(std::chrono::seconds(9));
+                    std::this_thread::sleep_for(std::chrono::seconds(2));
                 }
                 file.close();
             }

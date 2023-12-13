@@ -6,6 +6,8 @@ from PyQt5.QtNetwork import QTcpSocket
 from pydub import AudioSegment
 from pydub.playback import play
 from io import BytesIO, StringIO
+import pygame
+from copy import deepcopy
 
 class MusicPlayer(QWidget):
     def __init__(self):
@@ -13,6 +15,7 @@ class MusicPlayer(QWidget):
 
         self.init_ui()
         self.init_socket()
+        self.start_byte = 0
 
     def init_ui(self):
         self.setWindowTitle('Music Streaming Client')
@@ -69,9 +72,9 @@ class MusicPlayer(QWidget):
         try:
             self.buffer += self.tcp_socket.readAll()
             print(f"Received new batch of data. Current buffer size: {len(self.buffer)} bytes")
-            if len(self.buffer) > 1024 * 10 and not self.streaming:  # Adjust the multiplier based on your needs
+            if len(self.buffer) >= 1024:
                 print("Rozpoczęto odtwarzanie strumienia")
-                self.streaming = True
+                # self.streaming = True
                 self.start_continuous_playback()
 
         except Exception as e:
@@ -81,19 +84,17 @@ class MusicPlayer(QWidget):
         print(f"Błąd gniazda: {socket_error}")
 
     def start_continuous_playback(self):
-        try:
-            buffer_data = self.buffer.data()
+        pygame.init()
+        pygame.mixer.init()
+        # music_chunks = []
+        # music_chunks.append(self.buffer)
+        music_bytes = b''.join(self.buffer)
+        music_stream = BytesIO(music_bytes)
+        music_stream.seek(0)
+        sound = pygame.mixer.Sound(music_stream)
 
-            # Convert the buffer data to an AudioSegment
-            audio_segment = AudioSegment.from_mp3(BytesIO(buffer_data))
-
-            # Play the audio segment
-            play(audio_segment)
-
-            self.buffer.clear()
-
-        except Exception as e:
-            print(f"Error during continuous playback: {e}")
+        sound.play()
+        # self.buffer.clear()
 
     def set_volume(self):
         # Adjust the volume using a system-level volume control
