@@ -12,9 +12,9 @@
 #include <chrono>
 
 
-#define PORT 8081
+#define PORT 8082
 #define MAX_CLIENTS 10
-#define BUFFER_SIZE 10240
+#define BUFFER_SIZE 103500
 #define SONGS_DIR "songs"
 
 int serverSocket;
@@ -120,7 +120,7 @@ void broadcastChunksForClient(int clientSocket) {
 
                     sendChunkToClient(clientSocket, buffer, bytesRead);
 
-                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    std::this_thread::sleep_for(std::chrono::seconds(3));
                 }
                 file.close();
             }

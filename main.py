@@ -16,6 +16,7 @@ class MusicPlayer(QWidget):
         self.init_ui()
         self.init_socket()
         self.start_byte = 0
+        self.start_sec = 0
 
     def init_ui(self):
         self.setWindowTitle('Music Streaming Client')
@@ -48,7 +49,7 @@ class MusicPlayer(QWidget):
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
         server_address = "127.0.0.1"  # Replace with the server's IP address
-        server_port = 8081  # Replace with the server's port
+        server_port = 8082  # Replace with the server's port
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
@@ -72,7 +73,7 @@ class MusicPlayer(QWidget):
         try:
             self.buffer += self.tcp_socket.readAll()
             print(f"Received new batch of data. Current buffer size: {len(self.buffer)} bytes")
-            if len(self.buffer) >= 1024:
+            if len(self.buffer) >= 102400:
                 print("Rozpoczęto odtwarzanie strumienia")
                 # self.streaming = True
                 self.start_continuous_playback()
@@ -88,12 +89,18 @@ class MusicPlayer(QWidget):
         pygame.mixer.init()
         # music_chunks = []
         # music_chunks.append(self.buffer)
-        music_bytes = b''.join(self.buffer)
+        one = self.buffer[:8]
+        two = self.buffer[self.start_byte:]
+        music_bytes = b''.join(one+two)
         music_stream = BytesIO(music_bytes)
-        music_stream.seek(0)
-        sound = pygame.mixer.Sound(music_stream)
+        sound = pygame.mixer.music.load(music_stream)
+        pygame.mixer.music.play()
 
-        sound.play()
+        self.start_byte += 102400
+
+        # pygame.mixer.music.play(start=pygame.mixer.Sound(music_stream).get_length() / 2)
+
+        # sound.play()
         # self.buffer.clear()
 
     def set_volume(self):
