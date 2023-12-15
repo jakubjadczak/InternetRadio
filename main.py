@@ -1,13 +1,9 @@
 import sys
 from PyQt5.QtCore import Qt, QByteArray
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider
-from PyQt5.QtMultimedia import QMediaPlayer
 from PyQt5.QtNetwork import QTcpSocket
-from pydub import AudioSegment
-from pydub.playback import play
-from io import BytesIO, StringIO
+from io import BytesIO
 import pygame
-from copy import deepcopy
 
 class MusicPlayer(QWidget):
     def __init__(self):
@@ -15,7 +11,7 @@ class MusicPlayer(QWidget):
 
         self.init_ui()
         self.init_socket()
-        self.start_byte = 0
+        self.start_byte = 8
         self.start_sec = 0
 
     def init_ui(self):
@@ -48,8 +44,8 @@ class MusicPlayer(QWidget):
         self.tcp_socket.readyRead.connect(self.on_ready_read)
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
-        server_address = "127.0.0.1"  # Replace with the server's IP address
-        server_port = 8082  # Replace with the server's port
+        server_address = "127.0.0.1"
+        server_port = 8082
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
@@ -73,9 +69,9 @@ class MusicPlayer(QWidget):
         try:
             self.buffer += self.tcp_socket.readAll()
             print(f"Received new batch of data. Current buffer size: {len(self.buffer)} bytes")
-            if len(self.buffer) >= 102400:
+            if len(self.buffer) >= 50000 and not self.streaming:
                 print("Rozpoczęto odtwarzanie strumienia")
-                # self.streaming = True
+                self.streaming = True
                 self.start_continuous_playback()
 
         except Exception as e:
@@ -87,26 +83,18 @@ class MusicPlayer(QWidget):
     def start_continuous_playback(self):
         pygame.init()
         pygame.mixer.init()
-        # music_chunks = []
-        # music_chunks.append(self.buffer)
         one = self.buffer[:8]
         two = self.buffer[self.start_byte:]
         music_bytes = b''.join(one+two)
         music_stream = BytesIO(music_bytes)
         sound = pygame.mixer.music.load(music_stream)
+        self.start_byte += 50000
+        self.streaming = False
         pygame.mixer.music.play()
 
-        self.start_byte += 102400
-
-        # pygame.mixer.music.play(start=pygame.mixer.Sound(music_stream).get_length() / 2)
-
-        # sound.play()
-        # self.buffer.clear()
 
     def set_volume(self):
-        # Adjust the volume using a system-level volume control
         volume = self.volume_slider.value()
-        # You may need to implement a system-level volume adjustment here
         print(f"Setting volume to {volume}")
 
 if __name__ == '__main__':
