@@ -1,5 +1,18 @@
 // WARNING - HAVEN'T TESTED IT SO BE SUPERCAREFULL KUBA PLZ
 // And yeah so sorry for pushing to main XD
+/*
+[fixed] binarek nie powinno być na repo (a.out)
+[fixed] brakuje Makefile/… dla serwera
+[work in progress] main.cpp:58 handleClientData - nie ma jeszcze wsparcia dla podziału/sklejenia komunikatów od klienta
+[fixed] sendChunkToClient - w trybie blokującym pętla z l90 wykona się raz, w nieblokującym albo raz, a jeśli drugi, to drugi send się nie powiedzie; po co ta pętla?  -> usunięto pętle
+[fixed] main.cpp:123 zgaduję że wysyłacie kawałki po 2 sekundy; lepiej zapisać czas początku funkcji i czekać do czas+2s, np. auto time = std::chrono::steady_clock::now(); i std::this_thread::sleep_until(time+=std::chrono::seconds(2));, inaczej będzie się rozjeżdżać o czas wykonywania wysłania danych
+[how to?] ostatni kawałek piosenki wymaga mniej czasu oczekiwania - nie każda piosenka jest podzielna przez 2s bez reszty.
+[fixed] handleStreamingRequests - rozumiem że później przepiszecie projekt na wątki, tak żeby nie było wysłania po kolei do klientów, tylko naraz do klientów
+
+! Wprowadzono wątki, czy i jak działają nie wiem. Ale wyglądają przyzwoicie.
+! Wprowadzono mutex w funkcji handleStreamingRequests aby zabezpieczyć operacje na kolejce - problem równoczesnego dostępu.
+*/
+
 
 #include <iostream>
 #include <unistd.h>
@@ -77,6 +90,7 @@ void sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
 void broadcastChunksForClient(int clientSocket) {
     DIR* dir;
     struct dirent* ent;
+
     if ((dir = opendir(SONGS_DIR)) != nullptr) {
         while ((ent = readdir(dir)) != nullptr) {
             if (ent->d_type == DT_REG) {
@@ -90,13 +104,22 @@ void broadcastChunksForClient(int clientSocket) {
 
                 char buffer[BUFFER_SIZE];
 
+                auto startTime = std::chrono::steady_clock::now();
+
                 while (!file.eof()) {
                     file.read(buffer, sizeof(buffer));
                     size_t bytesRead = file.gcount();
 
                     sendChunkToClient(clientSocket, buffer, bytesRead);
 
-                    std::this_thread::sleep_for(std::chrono::seconds(2));
+                    auto currentTime = std::chrono::steady_clock::now();
+                    auto sleepTime = startTime + std::chrono::seconds(2);
+
+                    if (currentTime < sleepTime) {
+                        std::this_thread::sleep_until(sleepTime);
+                    }
+
+                    startTime = std::chrono::steady_clock::now();
                 }
                 file.close();
             }
@@ -107,11 +130,12 @@ void broadcastChunksForClient(int clientSocket) {
     }
 }
 
+
 void handleStreamingRequests(int serverSocket) {
     while (true) {
         int clientSocket = handleNewConnection(serverSocket);
 
-        std::thread([&clientSocket]() {
+        std::thread([serverSocket, clientSocket]() {
             std::lock_guard<std::mutex> lock(clientsMutex);
             broadcastChunksForClient(clientSocket);
             close(clientSocket);
@@ -131,3 +155,4 @@ int main() {
     std::cout << "Serwer zakończył działanie." << std::endl;
     return 0;
 }
+
