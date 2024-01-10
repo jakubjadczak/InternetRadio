@@ -136,18 +136,20 @@ void broadcastChunksForClient(int clientSocket) {
                 while (!file.eof()) {
                     file.read(buffer, sizeof(buffer));
                     size_t bytesRead = file.gcount();
-
+                
                     sendChunkToClient(clientSocket, buffer, bytesRead);
-
+                
                     auto currentTime = std::chrono::steady_clock::now();
+                    auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime);
                     auto sleepTime = startTime + std::chrono::seconds(2);
-
-                    if (currentTime < sleepTime) {
-                        std::this_thread::sleep_until(sleepTime);
+                
+                    if (elapsedTime < std::chrono::seconds(2)) {
+                        std::this_thread::sleep_for(std::chrono::seconds(2) - elapsedTime);
                     }
-
+                
                     startTime = std::chrono::steady_clock::now();
                 }
+
                 file.close();
             }
         }
