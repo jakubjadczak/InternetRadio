@@ -6,7 +6,7 @@
 [work in progress] main.cpp:58 handleClientData - nie ma jeszcze wsparcia dla podziału/sklejenia komunikatów od klienta
 [fixed] sendChunkToClient - w trybie blokującym pętla z l90 wykona się raz, w nieblokującym albo raz, a jeśli drugi, to drugi send się nie powiedzie; po co ta pętla?  -> usunięto pętle
 [fixed] main.cpp:123 zgaduję że wysyłacie kawałki po 2 sekundy; lepiej zapisać czas początku funkcji i czekać do czas+2s, np. auto time = std::chrono::steady_clock::now(); i std::this_thread::sleep_until(time+=std::chrono::seconds(2));, inaczej będzie się rozjeżdżać o czas wykonywania wysłania danych
-[how to?] ostatni kawałek piosenki wymaga mniej czasu oczekiwania - nie każda piosenka jest podzielna przez 2s bez reszty.
+[chyba fixed] ostatni kawałek piosenki wymaga mniej czasu oczekiwania - nie każda piosenka jest podzielna przez 2s bez reszty.
 [fixed] handleStreamingRequests - rozumiem że później przepiszecie projekt na wątki, tak żeby nie było wysłania po kolei do klientów, tylko naraz do klientów
 
 ! Wprowadzono wątki, czy i jak działają nie wiem. Ale wyglądają przyzwoicie.
