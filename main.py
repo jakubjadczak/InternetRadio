@@ -2,10 +2,12 @@ import sys
 from PyQt5.QtCore import Qt, QByteArray
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider, QListWidget
 from PyQt5.QtNetwork import QTcpSocket
-from PyQt5.QtCore import Qt, QMimeData
+from PyQt5.QtCore import Qt, QMimeData, QTimer
 from PyQt5.QtGui import QDrag
 from io import BytesIO
 import pygame
+import tempfile
+import os
 
 #Zakladamy ze piosenki maja unikatowe nazwy,
 #Metoda get_songs_list, wywolywana na poczatku oraz co n-ty fragment granego utworu
@@ -46,6 +48,15 @@ class MusicPlayer(QWidget):
         self.start_byte = 8
         self.start_sec = 0
         self.songs_list = []
+
+        self.streaming = False
+        self.buffer = QByteArray()
+        self.is_playing = False
+
+        pygame.init()
+        pygame.display.init()  # Dodanie inicjalizacji systemu wideo
+        pygame.mixer.init()
+        pygame.mixer.music.set_endevent(pygame.USEREVENT)
 
     def init_ui(self):
         self.setWindowTitle('Music Streaming Client')
@@ -159,25 +170,43 @@ class MusicPlayer(QWidget):
     def on_error(self, socket_error):
         print(f"Błąd gniazda: {socket_error}")
 
+
     def start_continuous_playback(self):
-        pygame.init()
-        pygame.mixer.init()
-        one = self.buffer[:8]
-        two = self.buffer[self.start_byte:]
-        music_bytes = b''.join(one+two)
-        music_stream = BytesIO(music_bytes)
-        sound = pygame.mixer.music.load(music_stream)
-        self.start_byte += 50000
-        self.streaming = False
-        pygame.mixer.music.play()
+        if not self.is_playing:
+            self.is_playing = True
+            self.play_next_chunk()
 
+    def play_next_chunk(self):
+        if len(self.buffer) >= 50000:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmpfile:
+                tmpfile.write(self.buffer[:50000])
+                tmpfile_name = tmpfile.name
 
-    def set_volume(self):
-        volume = self.volume_slider.value()
-        print(f"Setting volume to {volume}")
+            self.buffer = self.buffer[50000:]
+            pygame.mixer.music.load(tmpfile_name)
+            pygame.mixer.music.play()
+
+            # Usuwanie tymczasowego pliku po zakończeniu odtwarzania
+            pygame.mixer.music.set_endevent(pygame.USEREVENT)
+            os.remove(tmpfile_name)
+        else:
+            self.is_playing = False
+
+    def process_pygame_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.USEREVENT:
+                self.play_next_chunk()
+
+    def set_volume(self, volume):
+        pygame.mixer.music.set_volume(volume / 100)
 
 if __name__ == '__main__':
     app = QApplication([])
     player = MusicPlayer()
     player.show()
+
+    timer = QTimer()
+    timer.timeout.connect(player.process_pygame_events)
+    timer.start(100) 
+
     sys.exit(app.exec_())
