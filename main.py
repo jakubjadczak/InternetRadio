@@ -1,6 +1,6 @@
 import sys
 from PyQt5.QtCore import Qt, QByteArray
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider, QListWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider, QListWidget, QFileDialog
 from PyQt5.QtNetwork import QTcpSocket
 from PyQt5.QtCore import Qt, QMimeData, QTimer
 from PyQt5.QtGui import QDrag
@@ -74,11 +74,15 @@ class MusicPlayer(QWidget):
         self.volume_slider.setValue(50)
         self.volume_slider.valueChanged.connect(self.set_volume)
 
+        self.upload_button = QPushButton('Upload File')
+        self.upload_button.clicked.connect(self.select_and_send_file)
+
 
         layout = QVBoxLayout()
         layout.addWidget(self.play_button)
         layout.addWidget(self.test_button)
         layout.addWidget(self.volume_slider)
+        layout.addWidget(self.upload_button)
         self.listWidget = DraggableListWidget()
         layout.addWidget(self.listWidget)
 
@@ -102,10 +106,17 @@ class MusicPlayer(QWidget):
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
-    # def get_songs_order(self):
-    #     for i in range(self.listWidget.count()):
-    #         item = self.listWidget.item(i)
-    #         print(item.text())
+    def select_and_send_file(self):
+        file_name, _ = QFileDialog.getOpenFileName(self, "Wybierz plik")
+        if file_name:
+            self.send_file(file_name)
+
+    def send_file(self, file_name):
+        with open(file_name, 'rb') as file:
+            data = file.read()
+            self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode())
+            self.tcp_socket.write(data)
+            self.tcp_socket.write(b"EndFileUpload")
 
     def get_songs_list(self):
         self.tcp_socket.write(b"SongsList")

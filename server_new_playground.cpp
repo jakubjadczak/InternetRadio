@@ -43,6 +43,8 @@
 
 std::mutex clientsMutex;
 std::list<std::string> SongsList;
+std::vector<int> clientSockets;
+
 
 namespace fs = std::filesystem;
 
@@ -139,8 +141,32 @@ void broadcastChunksForClient(int clientSocket) {
 }
 
 
+void updateSongsListAndNotifyClients() {
+    getFilenamesInDirectory(SONGS_DIR);
+    // Wysyłanie zaktualizowanej listy do wszystkich klientów
+
+    std::string header = "LIST:\n";
+    std::string listContent;
+
+    // Budowanie listy piosenek do wysłania
+    for (const auto& song : SongsList) {
+        listContent += song + "\n";
+    }
+
+    std::string fullMessage = header + listContent;
+
+    // Wysyłanie zaktualizowanej listy do wszystkich klientów
+    std::lock_guard<std::mutex> lock(clientsMutex);
+    for (int socket : clientSockets) {
+        send(socket, fullMessage.c_str(), fullMessage.size(), 0);
+    }
+}
+
+
 void handleClientRequest(int clientSocket) {
     char buffer[1024];
+    bool isUploadingFile = false;  // Zmienna do śledzenia, czy obecnie odbywa się upload pliku
+    std::ofstream outputFile;
 
     while (true) {
         ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
@@ -175,6 +201,18 @@ void handleClientRequest(int clientSocket) {
         } else if (request == "request_stream") {
             broadcastChunksForClient(clientSocket);
             break; // Zakończ pętlę po rozpoczęciu strumieniowania
+
+        } else if (request.find("BeginFileUpload:") == 0) {
+            std::string fileName = request.substr(16); // Pobierz nazwę pliku
+            isUploadingFile = true;
+            outputFile.open(SONGS_DIR + fileName, std::ios::binary);
+
+        } else if (request == "EndFileUpload") {
+            isUploadingFile = false;
+            outputFile.close();
+            updateSongsListAndNotifyClients();
+        } else if (isUploadingFile) {
+            outputFile.write(buffer, bytesReceived);
         }
     }
 
