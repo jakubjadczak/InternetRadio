@@ -116,49 +116,28 @@ void sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
 }
 
 void broadcastChunksForClient(int clientSocket) {
-    DIR* dir;
-    struct dirent* ent;
+    for (const auto& song : SongsList) {
+        std::string filePath = std::string(SONGS_DIR) + "/" + song;
+        std::ifstream file(filePath, std::ios::binary);
 
-    if ((dir = opendir(SONGS_DIR)) != nullptr) {
-        while ((ent = readdir(dir)) != nullptr) {
-            if (ent->d_type == DT_REG) {
-                std::string filePath = std::string(SONGS_DIR) + "/" + ent->d_name;
-                std::ifstream file(filePath, std::ios::binary);
-
-                if (!file) {
-                    std::cerr << "Błąd przy otwieraniu pliku: " << filePath << std::endl;
-                    continue;
-                }
-
-                char buffer[BUFFER_SIZE];
-
-                auto startTime = std::chrono::steady_clock::now();
-
-                while (!file.eof()) {
-                    file.read(buffer, sizeof(buffer));
-                    size_t bytesRead = file.gcount();
-                
-                    sendChunkToClient(clientSocket, buffer, bytesRead);
-                
-                    auto currentTime = std::chrono::steady_clock::now();
-                    auto elapsedTime = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime);
-                    auto sleepTime = startTime + std::chrono::seconds(2);
-                
-                    if (elapsedTime < std::chrono::seconds(2)) {
-                        std::this_thread::sleep_for(std::chrono::seconds(2) - elapsedTime);
-                    }
-                
-                    startTime = std::chrono::steady_clock::now();
-                }
-
-                file.close();
-            }
+        if (!file) {
+            std::cerr << "Błąd przy otwieraniu pliku: " << filePath << std::endl;
+            continue;
         }
-        closedir(dir);
-    } else {
-        perror("Błąd przy otwieraniu katalogu");
+
+        char buffer[BUFFER_SIZE];
+        while (!file.eof()) {
+            file.read(buffer, sizeof(buffer));
+            size_t bytesRead = file.gcount();
+
+            sendChunkToClient(clientSocket, buffer, bytesRead);
+            std::this_thread::sleep_for(std::chrono::seconds(2)); // Oczekiwanie 2 sekundy między fragmentami
+        }
+
+        file.close();
     }
 }
+
 
 void handleClientRequest(int clientSocket) {
     char buffer[1024];
