@@ -35,7 +35,7 @@ class DraggableListWidget(QListWidget):
 
     def handleDropEvent(self):
         # Tu umieść kod, który ma się wykonać po upuszczeniu elementu
-        # print("Element został upuszczony")
+        print("Element został upuszczony")
         pass
 
 
@@ -102,7 +102,7 @@ class MusicPlayer(QWidget):
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
         server_address = "127.0.0.1"
-        server_port = 8082
+        server_port = 8085
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
@@ -114,8 +114,7 @@ class MusicPlayer(QWidget):
     def send_file(self, file_name):
         with open(file_name, 'rb') as file:
             data = file.read()
-            self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode())
-            self.tcp_socket.write(data)
+            self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode() + data)
             self.tcp_socket.write(b"EndFileUpload")
 
     def get_songs_list(self):
@@ -218,6 +217,6 @@ if __name__ == '__main__':
 
     timer = QTimer()
     timer.timeout.connect(player.process_pygame_events)
-    timer.start(100) 
+    timer.start(100)
 
     sys.exit(app.exec_())
