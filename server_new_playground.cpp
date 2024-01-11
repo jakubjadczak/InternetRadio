@@ -35,8 +35,9 @@
 #include <filesystem>
 #include <list>
 #include <fcntl.h>
+#include <sstream>
 
-#define PORT 8082
+#define PORT 8085
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 192000
 #define SONGS_DIR "songs"
@@ -161,66 +162,6 @@ void updateSongsListAndNotifyClients() {
         send(socket, fullMessage.c_str(), fullMessage.size(), 0);
     }
 }
-
-
-void handleClientRequest(int clientSocket) {
-    char buffer[1024];
-    bool isUploadingFile = false;  // Zmienna do śledzenia, czy obecnie odbywa się upload pliku
-    std::ofstream outputFile;
-
-    while (true) {
-        ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (bytesReceived <= 0) {
-            break; // Zakończ pętlę, jeśli nie ma więcej danych do odczytu
-        }
-
-        std::string request(buffer, bytesReceived);
-        if (request == "SongsList") {
-            std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
-
-            std::string header = "LIST:\n";
-            send(clientSocket, header.c_str(), header.size(), 0);
-
-            getFilenamesInDirectory("songs");
-            for (const auto& str : SongsList) {
-                std::string response = str + "\n";
-                send(clientSocket, response.c_str(), response.size(), 0);
-            }
-            std::cout << "Wysłano listę" << std::endl;
-        } else if (request.rfind("UpdateOrder:", 0) == 0) {
-            std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
-
-            std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
-            std::istringstream iss(orderStr);
-            std::string song;
-            SongsList.clear();
-            while (std::getline(iss, song, ',')) {
-                SongsList.push_back(song);
-            }
-            std::cout << "Otrzymano i zaktualizowano kolejność utworów" << std::endl;
-        } else if (request == "request_stream") {
-            broadcastChunksForClient(clientSocket);
-            break; // Zakończ pętlę po rozpoczęciu strumieniowania
-
-        } else if (request.find("BeginFileUpload:") == 0) {
-            std::string fileName = request.substr(16); // Pobierz nazwę pliku
-            isUploadingFile = true;
-            outputFile.open(SONGS_DIR + fileName, std::ios::binary);
-
-        } else if (request == "EndFileUpload") {
-            isUploadingFile = false;
-            outputFile.close();
-            updateSongsListAndNotifyClients();
-        } else if (isUploadingFile) {
-            outputFile.write(buffer, bytesReceived);
-        }
-    }
-
-    close(clientSocket);
-    std::cout << "Zakończono obsługę klienta" << std::endl;
-}
-
-
 void setSocketNonBlocking(int socket) {
     int flags = fcntl(socket, F_GETFL, 0);
     if (flags == -1) {
@@ -235,7 +176,9 @@ void setSocketNonBlocking(int socket) {
 
 void processClientRequest(int clientSocket) {
     char buffer[1024];
+    bool upload = false;
     ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    std::ofstream outputFile;
 
     if (bytesReceived <= 0) {
         // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
@@ -271,19 +214,23 @@ void processClientRequest(int clientSocket) {
             broadcastChunksForClient(clientSocket);
             close(clientSocket); // Zamknij gniazdo po zakończeniu strumieniowania
         }).detach(); // Rozpocznij wysyłanie utworu w nowym wątku
-    } else {
+    } else if (request.find("BeginFileUpload:") == 0) {
+        upload = true;
+        std::string fileName = request.substr(16); // Pobierz nazwę pliku
+        outputFile.open(SONGS_DIR + fileName, std::ios::binary);
+
+    } else if (request == "EndFileUpload"){
+        outputFile.close();
+        updateSongsListAndNotifyClients();
+        upload = false;
+    }
+    else if (upload) {
+        outputFile.write(buffer, bytesReceived);
+
+    }else {
         std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
     }
-} 
-
-void handleStreamingRequests(int serverSocket) {
-    while (true) {
-        int clientSocket = handleNewConnection(serverSocket);
-        std::thread clientThread(handleClientRequest, clientSocket);
-        clientThread.detach(); // Uruchom wątek i pozwól mu działać niezależnie
-    }
 }
-
 
 void handleConnections(int serverSocket) {
     fd_set readfds;
