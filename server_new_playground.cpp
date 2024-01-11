@@ -33,6 +33,7 @@
 #include <chrono>
 #include <mutex>
 #include <filesystem>
+#include <list>
 
 #define PORT 8082
 #define MAX_CLIENTS 10
@@ -40,26 +41,25 @@
 #define SONGS_DIR "songs"
 
 std::mutex clientsMutex;
+std::list<std::string> SongsList;
 
 namespace fs = std::filesystem;
 
-std::vector<std::string> getFilenamesInDirectory(const std::string& directory) {
-    std::vector<std::string> filenames;
+void getFilenamesInDirectory(const std::string& directory) {
     try {
         // Sprawdzenie, czy podana ścieżka jest katalogiem
         if (fs::is_directory(directory)) {
+            SongsList.clear(); // Wyczyść aktualną listę przed dodaniem nowych elementów
             for (const auto& entry : fs::directory_iterator(directory)) {
                 // Sprawdzenie, czy element jest plikiem
                 if (entry.is_regular_file()) {
-                    filenames.push_back(entry.path().filename().string());
+                    SongsList.push_back(entry.path().filename().string());
                 }
             }
         }
     } catch (const fs::filesystem_error& e) {
         std::cerr << "Błąd przy odczycie katalogu: " << e.what() << '\n';
     }
-
-    return filenames;
 }
 
 void createServerSocket(int& serverSocket) {
@@ -161,35 +161,52 @@ void broadcastChunksForClient(int clientSocket) {
 
 void handleClientRequest(int clientSocket) {
     char buffer[1024];
-    ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-    if (bytesReceived > 0) {
+
+    while (true) {
+        ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+        if (bytesReceived <= 0) {
+            break; // Zakończ pętlę, jeśli nie ma więcej danych do odczytu
+        }
+
         std::string request(buffer, bytesReceived);
         if (request == "SongsList") {
+            std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
+
             std::string header = "LIST:\n";
             send(clientSocket, header.c_str(), header.size(), 0);
 
-            std::vector<std::string> filenames = getFilenamesInDirectory("songs");
-            std::vector<std::string> strings = filenames;
-            for (const auto& str : strings) {
+            getFilenamesInDirectory("songs");
+            for (const auto& str : SongsList) {
                 std::string response = str + "\n";
                 send(clientSocket, response.c_str(), response.size(), 0);
             }
-            std::cout << "Wyslano liste" << std::endl;
+            std::cout << "Wysłano listę" << std::endl;
+        } else if (request.rfind("UpdateOrder:", 0) == 0) {
+            std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
+
+            std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
+            std::istringstream iss(orderStr);
+            std::string song;
+            SongsList.clear();
+            while (std::getline(iss, song, ',')) {
+                SongsList.push_back(song);
+            }
+            std::cout << "Otrzymano i zaktualizowano kolejność utworów" << std::endl;
+        } else if (request == "request_stream") {
+            broadcastChunksForClient(clientSocket);
+            break; // Zakończ pętlę po rozpoczęciu strumieniowania
         }
     }
-}
 
+    close(clientSocket);
+    std::cout << "Zakończono obsługę klienta" << std::endl;
+}
 
 void handleStreamingRequests(int serverSocket) {
     while (true) {
         int clientSocket = handleNewConnection(serverSocket);
-
-        std::thread([serverSocket, clientSocket]() {
-            std::lock_guard<std::mutex> lock(clientsMutex);
-            handleClientRequest(clientSocket);
-            broadcastChunksForClient(clientSocket);
-            close(clientSocket);
-        }).detach();
+        std::thread clientThread(handleClientRequest, clientSocket);
+        clientThread.detach(); // Uruchom wątek i pozwól mu działać niezależnie
     }
 }
 
@@ -199,8 +216,6 @@ int main() {
     createServerSocket(serverSocket);
     bindServerSocket(serverSocket);
     listenForConnections(serverSocket);
-
-    std::vector<std::string> strings = {"Hello", "World", "!"};
 
     handleStreamingRequests(serverSocket);
 

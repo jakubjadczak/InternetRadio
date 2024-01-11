@@ -28,7 +28,8 @@ class DraggableListWidget(QListWidget):
         super().dropEvent(event)
         self.handleDropEvent()
         super().dropEvent(event)
-        self.parent().get_songs_order()
+        # self.parent().get_songs_order()
+        self.parent().send_songs_order()
 
     def handleDropEvent(self):
         # Tu umieść kod, który ma się wykonać po upuszczeniu elementu
@@ -90,14 +91,26 @@ class MusicPlayer(QWidget):
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
-    def get_songs_order(self):
-        for i in range(self.listWidget.count()):
-            item = self.listWidget.item(i)
-            print(item.text())
+    # def get_songs_order(self):
+    #     for i in range(self.listWidget.count()):
+    #         item = self.listWidget.item(i)
+    #         print(item.text())
 
     def get_songs_list(self):
         self.tcp_socket.write(b"SongsList")
         print("Wyslano zadanie o liste utworow")
+
+    def send_songs_order(self):
+        songs_order = []
+        for i in range(self.listWidget.count()):
+            item = self.listWidget.item(i)
+            songs_order.append(item.text())
+
+        print(songs_order)
+
+        order_str = "UpdateOrder:" + ",".join(songs_order)
+        self.tcp_socket.write(order_str.encode())
+        print("Wysłano aktualną kolejność utworów do serwera")
 
     def toggle_play_streamed_music(self):
         print('toggle play')
