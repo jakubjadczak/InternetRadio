@@ -34,6 +34,7 @@
 #include <mutex>
 #include <filesystem>
 #include <list>
+#include <fcntl.h>
 
 #define PORT 8082
 #define MAX_CLIENTS 10
@@ -202,6 +203,62 @@ void handleClientRequest(int clientSocket) {
     std::cout << "Zakończono obsługę klienta" << std::endl;
 }
 
+
+void setSocketNonBlocking(int socket) {
+    int flags = fcntl(socket, F_GETFL, 0);
+    if (flags == -1) {
+        std::cerr << "Nie można pobrać flag gniazda" << std::endl;
+        return;
+    }
+    flags |= O_NONBLOCK;
+    if (fcntl(socket, F_SETFL, flags) == -1) {
+        std::cerr << "Nie można ustawić gniazda na nieblokujące" << std::endl;
+    }
+}
+
+void processClientRequest(int clientSocket) {
+    char buffer[1024];
+    ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+
+    if (bytesReceived <= 0) {
+        // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
+        return;
+    }
+
+    std::string request(buffer, bytesReceived);
+    if (request == "SongsList") {
+        std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
+
+        std::string header = "LIST:\n";
+        send(clientSocket, header.c_str(), header.size(), 0);
+
+        getFilenamesInDirectory("songs");
+        for (const auto& str : SongsList) {
+            std::string response = str + "\n";
+            send(clientSocket, response.c_str(), response.size(), 0);
+        }
+        std::cout << "Wysłano listę" << std::endl;
+    } else if (request.rfind("UpdateOrder:", 0) == 0) {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+
+        std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
+        std::istringstream iss(orderStr);
+        std::string song;
+        SongsList.clear();
+        while (std::getline(iss, song, ',')) {
+            SongsList.push_back(song);
+        }
+        std::cout << "Otrzymano i zaktualizowano kolejność utworów" << std::endl;
+    } else if (request == "request_stream") {
+        std::thread([clientSocket]() {
+            broadcastChunksForClient(clientSocket);
+            close(clientSocket); // Zamknij gniazdo po zakończeniu strumieniowania
+        }).detach(); // Rozpocznij wysyłanie utworu w nowym wątku
+    } else {
+        std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
+    }
+} 
+
 void handleStreamingRequests(int serverSocket) {
     while (true) {
         int clientSocket = handleNewConnection(serverSocket);
@@ -211,13 +268,52 @@ void handleStreamingRequests(int serverSocket) {
 }
 
 
+void handleConnections(int serverSocket) {
+    fd_set readfds;
+    std::vector<int> clientSockets;
+
+    while (true) {
+        FD_ZERO(&readfds);
+        FD_SET(serverSocket, &readfds);
+        int max_sd = serverSocket;
+
+        for (int socket : clientSockets) {
+            FD_SET(socket, &readfds);
+            if (socket > max_sd) {
+                max_sd = socket;
+            }
+        }
+
+        int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+        if ((activity < 0) && (errno != EINTR)) {
+            std::cout << "Błąd funkcji select" << std::endl;
+        }
+
+        // Nowe połączenie
+        if (FD_ISSET(serverSocket, &readfds)) {
+            int newSocket = handleNewConnection(serverSocket);
+            setSocketNonBlocking(newSocket);
+            clientSockets.push_back(newSocket);
+        }
+
+        // Aktywność na jednym z klientów
+        for (int socket : clientSockets) {
+            if (FD_ISSET(socket, &readfds)) {
+                processClientRequest(socket);
+            }
+        }
+    }
+}
+
+
 int main() {
     int serverSocket;
     createServerSocket(serverSocket);
+    setSocketNonBlocking(serverSocket);
     bindServerSocket(serverSocket);
     listenForConnections(serverSocket);
 
-    handleStreamingRequests(serverSocket);
+    handleConnections(serverSocket);
 
     close(serverSocket);
     std::cout << "Serwer zakończył działanie." << std::endl;
