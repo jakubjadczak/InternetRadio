@@ -157,12 +157,12 @@ void broadcastChunksForClient(int clientSocket) {
             file.read(buffer, sizeof(buffer));
             size_t bytesRead = file.gcount();
 
-            if(!sendChunkToClient(clientSocket, buffer, bytesRead)){
+            bool sentOk = sendChunkToClient(clientSocket, buffer, bytesRead);
+            std::this_thread::sleep_for(std::chrono::milliseconds (1900));
+            if(!sentOk){
                 break;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds (500)); // Oczekiwanie 2 sekundy między fragmentami
         }
-
         file.close();
     }
 }
