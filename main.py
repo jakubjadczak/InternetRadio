@@ -102,7 +102,7 @@ class MusicPlayer(QWidget):
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
         server_address = "127.0.0.1"
-        server_port = 8085
+        server_port = 8082
 
         self.tcp_socket.connectToHost(server_address, server_port)
 

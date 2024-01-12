@@ -37,7 +37,7 @@
 #include <fcntl.h>
 #include <sstream>
 
-#define PORT 8085
+#define PORT 8082
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 192000
 #define SONGS_DIR "songs"
@@ -176,61 +176,77 @@ void setSocketNonBlocking(int socket) {
 
 void processClientRequest(int clientSocket) {
     char buffer[1024];
-    bool upload = false;
-    ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    bool isUploadingFile = false;
     std::ofstream outputFile;
+    std::string fileName;
+    std::string fileDataBuffer;
+     std::string request; 
 
-    if (bytesReceived <= 0) {
-        // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
-        return;
-    }
-
-    std::string request(buffer, bytesReceived);
-    if (request == "SongsList") {
-        std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
-
-        std::string header = "LIST:\n";
-        send(clientSocket, header.c_str(), header.size(), 0);
-
-        getFilenamesInDirectory("songs");
-        for (const auto& str : SongsList) {
-            std::string response = str + "\n";
-            send(clientSocket, response.c_str(), response.size(), 0);
+    while (true) {
+        ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+        if (bytesReceived <= 0) {
+            if (isUploadingFile) {
+                outputFile.close();
+                isUploadingFile = false;
+                updateSongsListAndNotifyClients();
+            }
+            break; // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
         }
-        std::cout << "Wysłano listę" << std::endl;
-    } else if (request.rfind("UpdateOrder:", 0) == 0) {
-        std::lock_guard<std::mutex> lock(clientsMutex);
 
-        std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
-        std::istringstream iss(orderStr);
-        std::string song;
-        SongsList.clear();
-        while (std::getline(iss, song, ',')) {
-            SongsList.push_back(song);
+        std::string request(buffer, bytesReceived);
+
+        if (isUploadingFile) {
+            // Sprawdzamy, czy otrzymaliśmy komendę "EndFileUpload"
+            std::string data(buffer, bytesReceived);
+            if (data.find("EndFileUpload") != std::string::npos) {
+                isUploadingFile = false;
+                outputFile.close();
+                updateSongsListAndNotifyClients();
+                continue;
+            } 
+            outputFile.write(buffer, bytesReceived);
+            } else {
+            std::string request(buffer, bytesReceived);
         }
-        std::cout << "Otrzymano i zaktualizowano kolejność utworów" << std::endl;
-    } else if (request == "request_stream") {
-        std::thread([clientSocket]() {
-            broadcastChunksForClient(clientSocket);
-            close(clientSocket); // Zamknij gniazdo po zakończeniu strumieniowania
-        }).detach(); // Rozpocznij wysyłanie utworu w nowym wątku
-    } else if (request.find("BeginFileUpload:") == 0) {
-        upload = true;
-        std::string fileName = request.substr(16); // Pobierz nazwę pliku
-        outputFile.open(SONGS_DIR + fileName, std::ios::binary);
+        }
 
-    } else if (request == "EndFileUpload"){
-        outputFile.close();
-        updateSongsListAndNotifyClients();
-        upload = false;
-    }
-    else if (upload) {
-        outputFile.write(buffer, bytesReceived);
+        if (request.find("BeginFileUpload:") == 0) {
+            fileName = request.substr(16); // Pobierz nazwę pliku
+            isUploadingFile = true;
+            outputFile.open(std::string(SONGS_DIR) + "/" + fileName, std::ios::binary);
+            fileDataBuffer.clear();
+        } else if (request == "SongsList") {
+            std::lock_guard<std::mutex> lock(clientsMutex);
 
-    }else {
-        std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
+            std::string header = "LIST:\n";
+            send(clientSocket, header.c_str(), header.size(), 0);
+            getFilenamesInDirectory("songs");
+            for (const auto& song : SongsList) {
+                std::string response = song + "\n";
+                send(clientSocket, response.c_str(), response.size(), 0);
+            }
+        } else if (request.rfind("UpdateOrder:", 0) == 0) {
+            std::lock_guard<std::mutex> lock(clientsMutex);
+
+            std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
+            std::istringstream iss(orderStr);
+            std::string song;
+            SongsList.clear();
+            while (std::getline(iss, song, ',')) {
+                SongsList.push_back(song);
+            }
+        } else if (request == "request_stream") {
+            std::thread([clientSocket]() {
+                broadcastChunksForClient(clientSocket);
+                close(clientSocket);
+            }).detach();
+        } else {
+            std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
+        }
     }
-}
+
+
+
 
 void handleConnections(int serverSocket) {
     fd_set readfds;
