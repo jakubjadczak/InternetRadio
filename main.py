@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSl
 from PyQt5.QtNetwork import QTcpSocket
 from PyQt5.QtCore import Qt, QMimeData, QTimer
 from PyQt5.QtGui import QDrag
+from time import sleep
 from io import BytesIO
 import pygame
 import tempfile
@@ -102,7 +103,7 @@ class MusicPlayer(QWidget):
         self.tcp_socket.errorOccurred.connect(self.on_error)
 
         server_address = "127.0.0.1"
-        server_port = 8085
+        server_port = 8080
 
         self.tcp_socket.connectToHost(server_address, server_port)
 
@@ -112,10 +113,16 @@ class MusicPlayer(QWidget):
             self.send_file(file_name)
 
     def send_file(self, file_name):
-        with open(file_name, 'rb') as file:
-            data = file.read()
-            self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode() + data)
-            self.tcp_socket.write(b"EndFileUpload")
+        try:
+            with open(file_name, 'rb') as file:
+                data = file.read()
+                print(self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode()))
+                print("a")
+                print(self.tcp_socket.write(data))
+                print("b")
+            print(self.tcp_socket.write(b"EndFileUpload"))
+        except Exception as e:
+            print(f"Error sending file: {e}")
 
     def get_songs_list(self):
         self.tcp_socket.write(b"SongsList")
