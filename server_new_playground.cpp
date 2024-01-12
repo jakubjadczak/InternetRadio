@@ -105,7 +105,7 @@ int handleNewConnection(int serverSocket) {
     return newSocket;
 }
 
-void sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
+bool sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
     size_t totalBytesSent = 0;
 
     while (totalBytesSent < chunkSize) {
@@ -113,10 +113,11 @@ void sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
 
         if (sent == -1) {
             std::cerr << "Błąd przy wysyłaniu danych do klienta" << std::endl;
-            break;
+            return false;
         }
         totalBytesSent += sent;
     }
+    return true;
 }
 
 void broadcastChunksForClient(int clientSocket) {
@@ -134,7 +135,9 @@ void broadcastChunksForClient(int clientSocket) {
             file.read(buffer, sizeof(buffer));
             size_t bytesRead = file.gcount();
 
-            sendChunkToClient(clientSocket, buffer, bytesRead);
+            if(!sendChunkToClient(clientSocket, buffer, bytesRead)){
+                break;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds (500)); // Oczekiwanie 2 sekundy między fragmentami
         }
 
