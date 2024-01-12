@@ -141,6 +141,7 @@ class MusicPlayer(QWidget):
         print("Wysłano aktualną kolejność utworów do serwera")
 
     def toggle_play_streamed_music(self):
+        self.play_button.setEnabled(False)
         print('toggle play')
         if not self.streaming:
             self.tcp_socket.write(b"request_stream")
@@ -224,6 +225,6 @@ if __name__ == '__main__':
 
     timer = QTimer()
     timer.timeout.connect(player.process_pygame_events)
-    timer.start(100)
+    timer.start(0)
 
     sys.exit(app.exec_())
