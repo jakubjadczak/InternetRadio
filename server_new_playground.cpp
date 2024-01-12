@@ -37,7 +37,7 @@
 #include <fcntl.h>
 #include <sstream>
 
-#define PORT 8082
+#define PORT 8080
 #define MAX_CLIENTS 10
 #define BUFFER_SIZE 192000
 #define SONGS_DIR "songs"
@@ -45,7 +45,8 @@
 std::mutex clientsMutex;
 std::list<std::string> SongsList;
 std::vector<int> clientSockets;
-
+bool upload = false;
+std::ofstream outputFile;
 
 namespace fs = std::filesystem;
 
@@ -134,7 +135,7 @@ void broadcastChunksForClient(int clientSocket) {
             size_t bytesRead = file.gcount();
 
             sendChunkToClient(clientSocket, buffer, bytesRead);
-            std::this_thread::sleep_for(std::chrono::seconds(2)); // Oczekiwanie 2 sekundy między fragmentami
+            std::this_thread::sleep_for(std::chrono::milliseconds (500)); // Oczekiwanie 2 sekundy między fragmentami
         }
 
         file.close();
@@ -176,77 +177,66 @@ void setSocketNonBlocking(int socket) {
 
 void processClientRequest(int clientSocket) {
     char buffer[1024];
-    bool isUploadingFile = false;
-    std::ofstream outputFile;
-    std::string fileName;
-    std::string fileDataBuffer;
-     std::string request; 
-
-    while (true) {
-        ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (bytesReceived <= 0) {
-            if (isUploadingFile) {
-                outputFile.close();
-                isUploadingFile = false;
-                updateSongsListAndNotifyClients();
-            }
-            break; // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
-        }
-
-        std::string request(buffer, bytesReceived);
-
-        if (isUploadingFile) {
-            // Sprawdzamy, czy otrzymaliśmy komendę "EndFileUpload"
-            std::string data(buffer, bytesReceived);
-            if (data.find("EndFileUpload") != std::string::npos) {
-                isUploadingFile = false;
-                outputFile.close();
-                updateSongsListAndNotifyClients();
-                continue;
-            } 
-            outputFile.write(buffer, bytesReceived);
-            } else {
-            std::string request(buffer, bytesReceived);
-        }
-        }
-
-        if (request.find("BeginFileUpload:") == 0) {
-            fileName = request.substr(16); // Pobierz nazwę pliku
-            isUploadingFile = true;
-            outputFile.open(std::string(SONGS_DIR) + "/" + fileName, std::ios::binary);
-            fileDataBuffer.clear();
-        } else if (request == "SongsList") {
-            std::lock_guard<std::mutex> lock(clientsMutex);
-
-            std::string header = "LIST:\n";
-            send(clientSocket, header.c_str(), header.size(), 0);
-            getFilenamesInDirectory("songs");
-            for (const auto& song : SongsList) {
-                std::string response = song + "\n";
-                send(clientSocket, response.c_str(), response.size(), 0);
-            }
-        } else if (request.rfind("UpdateOrder:", 0) == 0) {
-            std::lock_guard<std::mutex> lock(clientsMutex);
-
-            std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
-            std::istringstream iss(orderStr);
-            std::string song;
-            SongsList.clear();
-            while (std::getline(iss, song, ',')) {
-                SongsList.push_back(song);
-            }
-        } else if (request == "request_stream") {
-            std::thread([clientSocket]() {
-                broadcastChunksForClient(clientSocket);
-                close(clientSocket);
-            }).detach();
-        } else {
-            std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
-        }
+    ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    std::cout<<"Buffer: "<<buffer<<std::endl;
+    if (bytesReceived < 0) {
+        // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
+        return;
     }
 
+    std::string request(buffer, bytesReceived);
+    if (request == "SongsList") {
+        std::lock_guard<std::mutex> lock(clientsMutex); // Zabezpieczenie przed równoczesnym dostępem
 
+        std::string header = "LIST:\n";
+        send(clientSocket, header.c_str(), header.size(), 0);
 
+        getFilenamesInDirectory("songs");
+        for (const auto& str : SongsList) {
+            std::string response = str + "\n";
+            send(clientSocket, response.c_str(), response.size(), 0);
+        }
+        std::cout << "Wysłano listę" << std::endl;
+    } else if (request.rfind("UpdateOrder:", 0) == 0) {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+
+        std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
+        std::istringstream iss(orderStr);
+        std::string song;
+        SongsList.clear();
+        while (std::getline(iss, song, ',')) {
+            SongsList.push_back(song);
+        }
+        std::cout << "Otrzymano i zaktualizowano kolejność utworów" << std::endl;
+    } else if (request == "request_stream") {
+        std::thread([clientSocket]() {
+            broadcastChunksForClient(clientSocket);
+            close(clientSocket); // Zamknij gniazdo po zakończeniu strumieniowania
+        }).detach(); // Rozpocznij wysyłanie utworu w nowym wątku
+    } else if (request.find("BeginFileUpload:") == 0) {
+        std::cout << "begin" << std::endl;
+        upload = true;
+        std::string fileName = request.substr(16); // Pobierz nazwę pliku
+        std::filesystem::path filePath = std::filesystem::path(SONGS_DIR) / fileName;
+        outputFile.open(filePath, std::ios::binary);
+
+    } else if (request.find("EndFileUpload") == 0){
+        std::cout<<"done"<<std::endl;
+        outputFile.close();
+        updateSongsListAndNotifyClients();
+        upload = false;
+    }
+    else if (upload) {
+        std::cout<<"uploading"<<std::endl;
+        outputFile.write(buffer, bytesReceived);
+        std::cout<<"Before clearing:"<<std::endl;
+        std::cout<<sizeof(buffer)<<std::endl;
+        std::cout<<"After clearing"<<std::endl;
+    }else {
+        std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
+    }
+    std::cout<<upload<<std::endl;
+}
 
 void handleConnections(int serverSocket) {
     fd_set readfds;
@@ -275,7 +265,6 @@ void handleConnections(int serverSocket) {
             setSocketNonBlocking(newSocket);
             clientSockets.push_back(newSocket);
         }
-
         // Aktywność na jednym z klientów
         for (int socket : clientSockets) {
             if (FD_ISSET(socket, &readfds)) {
@@ -299,4 +288,3 @@ int main() {
     std::cout << "Serwer zakończył działanie." << std::endl;
     return 0;
 }
-
