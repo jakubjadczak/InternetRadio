@@ -1,19 +1,13 @@
 import sys
-from PyQt5.QtCore import Qt, QByteArray
+from PyQt5.QtCore import QByteArray
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSlider, QListWidget, QFileDialog
 from PyQt5.QtNetwork import QTcpSocket
-from PyQt5.QtCore import Qt, QMimeData, QTimer
+from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QDrag
-from time import sleep
-from io import BytesIO
+
 import pygame
 import tempfile
 import os
-
-#Zakladamy ze piosenki maja unikatowe nazwy,
-#Metoda get_songs_list, wywolywana na poczatku oraz co n-ty fragment granego utworu
-#Metoda get_songs_order, jest wywolywana przy kazdej zmianie kolejnosci i zwraca aktualna kolejnosc, musi wyslac do serwera
-
 
 
 class DraggableListWidget(QListWidget):
@@ -31,12 +25,9 @@ class DraggableListWidget(QListWidget):
         super().dropEvent(event)
         self.handleDropEvent()
         super().dropEvent(event)
-        # self.parent().get_songs_order()
         self.parent().send_songs_order()
 
     def handleDropEvent(self):
-        # Tu umieść kod, który ma się wykonać po upuszczeniu elementu
-        print("Element został upuszczony")
         pass
 
 
@@ -60,15 +51,12 @@ class MusicPlayer(QWidget):
         pygame.mixer.music.set_endevent(pygame.USEREVENT)
 
     def init_ui(self):
-        self.setWindowTitle('Music Streaming Client')
+        self.setWindowTitle('Internet Radio')
 
         self.play_button = QPushButton('Play')
         self.play_button.clicked.connect(self.toggle_play_streamed_music)
         self.play_button.resize(100, 100)
         self.play_button.move(50, 50)
-
-        self.test_button = QPushButton('Test')
-        self.test_button.clicked.connect(self.send_test_request)
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -77,7 +65,6 @@ class MusicPlayer(QWidget):
 
         self.upload_button = QPushButton('Upload File')
         self.upload_button.clicked.connect(self.select_and_send_file)
-
 
         layout = QVBoxLayout()
         layout.addWidget(self.play_button)
@@ -90,7 +77,6 @@ class MusicPlayer(QWidget):
         self.get_songs_list()
 
         self.setLayout(layout)
-        self.setWindowTitle('Internet Radio')
         self.resize(300, 500)
 
         self.streaming = False
@@ -116,43 +102,29 @@ class MusicPlayer(QWidget):
         try:
             with open(file_name, 'rb') as file:
                 data = file.read()
-                print(self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode()))
-                print("a")
-                print(self.tcp_socket.write(data))
-                print("b")
-            print(self.tcp_socket.write(b"EndFileUpload"))
+                self.tcp_socket.write(b"BeginFileUpload:" + os.path.basename(file_name).encode())
+                self.tcp_socket.write(data)
+            self.tcp_socket.write(b"EndFileUpload")
         except Exception as e:
             print(f"Error sending file: {e}")
 
     def get_songs_list(self):
         self.tcp_socket.write(b"SongsList")
-        print("Wyslano zadanie o liste utworow")
 
     def send_songs_order(self):
         songs_order = []
         for i in range(self.listWidget.count()):
             item = self.listWidget.item(i)
             songs_order.append(item.text())
-
-        print(songs_order)
-
         order_str = "UpdateOrder:" + ",".join(songs_order)
         self.tcp_socket.write(order_str.encode())
-        print("Wysłano aktualną kolejność utworów do serwera")
 
     def toggle_play_streamed_music(self):
         self.play_button.setEnabled(False)
-        print('toggle play')
         if not self.streaming:
             self.tcp_socket.write(b"request_stream")
-            print("Wysłano żądanie strumieniowania do serwera")
-
         else:
             self.tcp_socket.disconnectFromHost()
-
-    def send_test_request(self):
-        self.tcp_socket.write(b"test")
-        print("Wysłano żądanie test do serwera")
 
     def on_connected(self):
         print("Połączono z serwerem")
@@ -181,13 +153,11 @@ class MusicPlayer(QWidget):
                 print("Rozpoczęto odtwarzanie strumienia")
                 self.streaming = True
                 self.start_continuous_playback()
-
         except Exception as e:
             print(f"Błąd przy odbieraniu danych: {e}")
 
     def on_error(self, socket_error):
         print(f"Błąd gniazda: {socket_error}")
-
 
     def start_continuous_playback(self):
         if not self.is_playing:
@@ -217,6 +187,7 @@ class MusicPlayer(QWidget):
 
     def set_volume(self, volume):
         pygame.mixer.music.set_volume(volume / 100)
+
 
 if __name__ == '__main__':
     app = QApplication([])
