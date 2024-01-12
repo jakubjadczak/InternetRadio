@@ -2,3 +2,4 @@ venv
 a.out
 songs/*
 test.cpp
+*.mp3

@@ -171,7 +171,7 @@ void broadcastChunksForClient(int clientSocket) {
 void updateSongsListAndNotifyClients() {
     getFilenamesInDirectory(SONGS_DIR);
     // Wysyłanie zaktualizowanej listy do wszystkich klientów
-
+    
     std::string header = "LIST:\n";
     std::string listContent;
 
