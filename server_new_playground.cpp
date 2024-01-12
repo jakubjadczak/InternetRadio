@@ -184,8 +184,11 @@ void updateSongsListAndNotifyClients() {
 
     // Wysyłanie zaktualizowanej listy do wszystkich klientów
     std::lock_guard<std::mutex> lock(clientsMutex);
-    for (int socket : clientSockets) {
-        send(socket, fullMessage.c_str(), fullMessage.size(), 0);
+    std::cout << "Size: " << clientSockets.size() << std::endl;
+    for (int i = 0; i < clientSockets.size(); i++) {
+        std::cout << "Sending list " << std::endl;
+        int clientSocket = clientSockets[i];
+        send(clientSocket, fullMessage.c_str(), fullMessage.size(), 0);
     }
 }
 void setSocketNonBlocking(int socket) {
@@ -262,7 +265,7 @@ bool processClientRequest(int clientSocket) {
 
 void handleConnections(int serverSocket) {
     fd_set readfds;
-    std::vector<int> clientSockets;
+    // std::vector<int> clientSockets;
 
     while (true) {
         FD_ZERO(&readfds);
@@ -287,6 +290,7 @@ void handleConnections(int serverSocket) {
             addNewClient(newSocket); // Dodaj nowego klienta
             setSocketNonBlocking(newSocket);
             clientSockets.push_back(newSocket);
+            
         }
         // Aktywność na jednym z klientów
         for (int i = 0; i < clientSockets.size(); i++) {

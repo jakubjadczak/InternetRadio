@@ -68,7 +68,6 @@ class MusicPlayer(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(self.play_button)
-        layout.addWidget(self.test_button)
         layout.addWidget(self.volume_slider)
         layout.addWidget(self.upload_button)
         self.listWidget = DraggableListWidget()
@@ -138,7 +137,7 @@ class MusicPlayer(QWidget):
             if list_header_index != -1:
                 self.buffer = self.buffer[list_header_index + len(b"LIST:\n"):]
                 print("in if")
-
+                self.listWidget.clear()
                 # Przetwarzanie danych z listy
                 while self.buffer.contains(b'\n'):
                     line_end_index = self.buffer.indexOf(b'\n')
