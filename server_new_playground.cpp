@@ -175,13 +175,15 @@ void setSocketNonBlocking(int socket) {
     }
 }
 
-void processClientRequest(int clientSocket) {
+bool processClientRequest(int clientSocket) {
     char buffer[1024];
     ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
     std::cout<<"Buffer: "<<buffer<<std::endl;
-    if (bytesReceived < 0) {
+    if (bytesReceived <= 0) {
         // Zakończ, jeśli nie ma danych do odczytu lub wystąpił błąd
-        return;
+        close(clientSocket); // Zamknij gniazdo klienta
+        std::cout << "Klient rozłączył się." << std::endl;
+        return true;
     }
 
     std::string request(buffer, bytesReceived);
@@ -236,6 +238,8 @@ void processClientRequest(int clientSocket) {
         std::cerr << "Otrzymano nieznane żądanie: " << request << std::endl;
     }
     std::cout<<upload<<std::endl;
+
+    return false;
 }
 
 void handleConnections(int serverSocket) {
@@ -266,9 +270,14 @@ void handleConnections(int serverSocket) {
             clientSockets.push_back(newSocket);
         }
         // Aktywność na jednym z klientów
-        for (int socket : clientSockets) {
-            if (FD_ISSET(socket, &readfds)) {
-                processClientRequest(socket);
+        for (int i = 0; i < clientSockets.size(); i++) {
+            int clientSocket = clientSockets[i];
+            if (FD_ISSET(clientSocket, &readfds)) {
+                if (processClientRequest(clientSocket)) {
+                    close(clientSocket); // Zamknij gniazdo klienta
+                    clientSockets.erase(clientSockets.begin() + i); // Usuń gniazdo z listy
+                    i--; // Zmniejsz indeks, ponieważ lista została zmodyfikowana
+                }
             }
         }
     }
