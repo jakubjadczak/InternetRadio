@@ -225,6 +225,6 @@ if __name__ == '__main__':
 
     timer = QTimer()
     timer.timeout.connect(player.process_pygame_events)
-    timer.start(0)
+    timer.start(1)
 
     sys.exit(app.exec_())
