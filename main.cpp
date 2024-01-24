@@ -160,7 +160,7 @@ void broadcastChunksForClient(int clientSocket) {
             size_t bytesRead = file.gcount();
 
             bool sentOk = sendChunkToClient(clientSocket, buffer, bytesRead);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1900));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1300));
             if (!sentOk) {
                 return;
             }
