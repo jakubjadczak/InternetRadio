@@ -9,7 +9,6 @@ import pygame
 import tempfile
 import os
 
-SIZE = 32000
 class DraggableListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -160,7 +159,7 @@ class MusicPlayer(QWidget):
 
     def play_next_chunk(self):
         # Ustal próg minimalny bufora, aby rozpocząć odtwarzanie
-        MIN_BUFFER_THRESHOLD = 16000
+        MIN_BUFFER_THRESHOLD = 32000
 
         while len(self.buffer) >= MIN_BUFFER_THRESHOLD:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmpfile:
