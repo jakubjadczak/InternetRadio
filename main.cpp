@@ -22,7 +22,7 @@
 
 #define PORT 8080
 #define MAX_CLIENTS 10
-#define BUFFER_SIZE 192000
+#define BUFFER_SIZE 32000
 #define SONGS_DIR "songs"
 
 std::mutex clientsMutex;
@@ -162,7 +162,6 @@ void broadcastChunksForClient(int clientSocket) {
             bool sentOk = sendChunkToClient(clientSocket, buffer, bytesRead);
             std::this_thread::sleep_for(std::chrono::milliseconds(1900));
             if (!sentOk) {
-                // Jeśli wysłanie fragmentu nie powiedzie się, wychodzimy z funkcji.
                 return;
             }
         }
