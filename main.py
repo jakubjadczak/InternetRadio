@@ -159,12 +159,15 @@ class MusicPlayer(QWidget):
         print(f"Błąd gniazda: {socket_error}")
 
     def play_next_chunk(self):
-        if len(self.buffer) >= SIZE:
+        # Ustal próg minimalny bufora, aby rozpocząć odtwarzanie
+        MIN_BUFFER_THRESHOLD = 16000
+
+        while len(self.buffer) >= MIN_BUFFER_THRESHOLD:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmpfile:
-                tmpfile.write(self.buffer[:SIZE])
+                tmpfile.write(self.buffer[:MIN_BUFFER_THRESHOLD])
                 tmpfile_name = tmpfile.name
 
-            self.buffer = self.buffer[SIZE:]
+            self.buffer = self.buffer[MIN_BUFFER_THRESHOLD:]
             pygame.mixer.music.load(tmpfile_name)
             pygame.mixer.music.play()
 
@@ -172,7 +175,8 @@ class MusicPlayer(QWidget):
             pygame.mixer.music.set_endevent(pygame.USEREVENT)
             os.remove(tmpfile_name)
             self.streaming = False
-        else:
+        # Jeśli w buforze jest mniej niż próg, ale wciąż jest coś do odtwarzania
+        if len(self.buffer) > 0 and not pygame.mixer.music.get_busy():
             self.streaming = False
 
     def process_pygame_events(self):
