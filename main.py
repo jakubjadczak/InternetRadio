@@ -9,7 +9,7 @@ import pygame
 import tempfile
 import os
 
-
+SIZE = 32000
 class DraggableListWidget(QListWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -148,36 +148,32 @@ class MusicPlayer(QWidget):
                     # Usunięcie przetworzonej linii z bufora
                     self.buffer = self.buffer[line_end_index + 1:]
 
-            elif len(self.buffer) >= 50000 and not self.streaming:
+            elif len(self.buffer) > 0 and not self.streaming:
                 print("Rozpoczęto odtwarzanie strumienia")
                 self.streaming = True
-                self.start_continuous_playback()
+                self.play_next_chunk()
         except Exception as e:
             print(f"Błąd przy odbieraniu danych: {e}")
 
     def on_error(self, socket_error):
         print(f"Błąd gniazda: {socket_error}")
 
-    def start_continuous_playback(self):
-        if not self.is_playing:
-            self.is_playing = True
-            self.play_next_chunk()
-
     def play_next_chunk(self):
-        if len(self.buffer) >= 50000:
+        if len(self.buffer) >= SIZE:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as tmpfile:
-                tmpfile.write(self.buffer[:50000])
+                tmpfile.write(self.buffer[:SIZE])
                 tmpfile_name = tmpfile.name
 
-            self.buffer = self.buffer[50000:]
+            self.buffer = self.buffer[SIZE:]
             pygame.mixer.music.load(tmpfile_name)
             pygame.mixer.music.play()
 
             # Usuwanie tymczasowego pliku po zakończeniu odtwarzania
             pygame.mixer.music.set_endevent(pygame.USEREVENT)
             os.remove(tmpfile_name)
+            self.streaming = False
         else:
-            self.is_playing = False
+            self.streaming = False
 
     def process_pygame_events(self):
         for event in pygame.event.get():
