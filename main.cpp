@@ -18,7 +18,6 @@
 #include <sstream>
 #include <utility>
 #include <functional>
-#include <mutex>
 
 
 #define PORT 8080
@@ -160,7 +159,7 @@ void updateSongsListAndNotifyClients() {
         listContent += song + "\n";
     }
 
-    std::string fullMessage = header + listContent;
+    std::string fullMessage = header + listContent ;
 
     // Wysyłanie zaktualizowanej listy do wszystkich klientów
     std::lock_guard<std::mutex> lock(clientsMutex);
@@ -184,6 +183,7 @@ void setSocketNonBlocking(int socket) {
 
 bool processClientRequest(int clientSocket) {
     char buffer[1024];
+    memset(buffer, 0, 1024);
     ssize_t bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
     std::cout << "Buffer: " << buffer << std::endl;
 
@@ -193,20 +193,21 @@ bool processClientRequest(int clientSocket) {
         std::cout << "Klient rozłączył się." << std::endl;
         return true;
     }
-
     std::string request(buffer, bytesReceived);
+
     for (auto& clientPair : clientList) {
         if (clientPair.first == clientSocket) {
             ClientState& state = clientPair.second;
 
             if (request == "SongsList") {
+                getFilenamesInDirectory(SONGS_DIR);
                 std::string header = "LIST:\n";
-                send(clientSocket, header.c_str(), header.size(), 0);
-                getFilenamesInDirectory("songs");
+                std::string listContent;
                 for (const auto& song : SongsList) {
-                    std::string response = song + "\n";
-                    send(clientSocket, response.c_str(), response.size(), 0);
+                    listContent += song + "\n";
                 }
+                std::string fullMessage = header + listContent ;
+                send(clientSocket, fullMessage.c_str(), fullMessage.size(), 0);
                 std::cout << "Wysłano listę" << std::endl;
             } else if (request.rfind("UpdateOrder:", 0) == 0) {
                 std::string orderStr = request.substr(12); // Usuń "UpdateOrder:"
