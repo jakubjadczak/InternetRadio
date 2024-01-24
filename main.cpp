@@ -26,6 +26,7 @@
 #define SONGS_DIR "songs"
 
 std::mutex clientsMutex;
+std::mutex songsListMutex;
 std::list<std::string> SongsList;
 std::vector<int> clientSockets;
 
@@ -122,12 +123,34 @@ bool sendChunkToClient(int clientSocket, const char* chunk, size_t chunkSize) {
 }
 
 void broadcastChunksForClient(int clientSocket) {
-    for (const auto& song : SongsList) {
-        std::string filePath = std::string(SONGS_DIR) + "/" + song;
+    auto it = SongsList.begin();
+
+    while (true) {
+        std::string currentSong;
+
+        {
+            std::lock_guard<std::mutex> lock(songsListMutex);
+            if (it == SongsList.end()) {
+                // Jeśli iterator doszedł do końca listy, zaczynamy od początku.
+                it = SongsList.begin();
+                // Jeśli lista jest pusta, wychodzimy z pętli.
+                if (it == SongsList.end()) {
+                    break;
+                }
+            }
+            currentSong = *it;
+        }
+
+        std::string filePath = std::string(SONGS_DIR) + "/" + currentSong;
         std::ifstream file(filePath, std::ios::binary);
 
         if (!file) {
             std::cerr << "Błąd przy otwieraniu pliku: " << filePath << std::endl;
+            // Przechodzimy do następnej piosenki, nawet jeśli ta nie mogła zostać otwarta.
+            std::lock_guard<std::mutex> lock(songsListMutex);
+            if (++it == SongsList.end() && !SongsList.empty()) {
+                it = SongsList.begin();
+            }
             continue;
         }
 
@@ -137,12 +160,19 @@ void broadcastChunksForClient(int clientSocket) {
             size_t bytesRead = file.gcount();
 
             bool sentOk = sendChunkToClient(clientSocket, buffer, bytesRead);
-            std::this_thread::sleep_for(std::chrono::milliseconds (1900));
-            if(!sentOk){
-                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1900));
+            if (!sentOk) {
+                // Jeśli wysłanie fragmentu nie powiedzie się, wychodzimy z funkcji.
+                return;
             }
         }
         file.close();
+
+        // Przechodzimy do następnej piosenki
+        std::lock_guard<std::mutex> lock(songsListMutex);
+        if (++it == SongsList.end() && !SongsList.empty()) {
+            it = SongsList.begin();
+        }
     }
 }
 
